@@ -1,44 +1,33 @@
 class Garden
   attr_reader :weeds, :plants, :watering, :mana_balance
 
-  def initialize(weeds: 0, plants: 0, watering: 110, mana_balance: 100)
+  def initialize(weeds: required, plants: required, watering: required, mana_balance: required)
     @weeds = weeds
     @plants = plants
     @watering = watering
     @mana_balance = mana_balance
   end
 
-  def add_plants (plants)
-    @plants += plants
-  end
-
-  def remove_plants (num)
-    @plants -= num
+  def plant(num)
+    @plants += num
     @plants = -1 if @plants < -1
   end
 
-  def remove_weeds (weeds)
-    @weeds -= weeds
+  def weed(num)
+    @weeds += num
     @weeds = -1 if @weeds < -1
-  end
-
-  def add_weeds (weeds)
-    @weeds += weeds
   end
 
   def water(percents)
     @watering += percents
+    @watering = 0 if @watering < 0
     @watering = 100 if @watering > 100
   end
 
-  def dry(percents)
-    @watering -= percents
-    @watering = 0 if @watering < 0
-  end
-
-  def yield_mana(percents)
+  def mana(percents)
     @mana_balance += percents
     @mana_balance = 100 if @mana_balance > 100
+    @mana_balance = -5 if @mana_balance < -5
   end
 
   def state
@@ -48,9 +37,10 @@ class Garden
     "
   end
 
-  def consume_mana(cost)
-    @mana_balance -= cost
-    @mana_balance = -5 if @mana_balance < -5
+  private
+
+  def required
+    raise ArgumentError('Missing required argument.')
   end
 
 end
@@ -59,8 +49,11 @@ class Game
 
   attr_reader :talk, :over
 
+  GARDEN_CAPACITY = 30
+  WIN_POINT = 20
+
   def initialize
-    @garden = Garden.new
+    @garden = Garden.new(watering: 100, mana_balance: 100, plants: 0, weeds: 0)
     @talk = nil
     @over = false
   end
@@ -71,143 +64,270 @@ class Game
 
   def assess
     if @garden.watering == 0
-      @garden.remove_plants(1)
-      @talk = '1 plant dried.'
+      plants = -1
+      @garden.plant(plants)
+      @talk = "#{plants.abs} plant dried."
     end
     if @garden.plants == -1
-      @over = 'All plants dried!'
+      @over = "
+      #{@garden.state}
+      ***
+      Failure. All your plants dried!
+      ***
+      " #
     end
     if @garden.mana_balance == 0
-      @over = 'You are exhausted!'
+      @over = "
+      #{@garden.state}
+      ***
+      Failure. You are exhausted!
+      ***
+      " #
     end
+    if @garden.weeds >= WIN_POINT
+      @over = "
+      #{@garden.state}
+      ***
+      Failure. Weeds took over your garden!
+      ***
+      " #
+    end
+    if @garden.plants >= WIN_POINT
+      @over = "
+      #{@garden.state}
+      ***
+      VICTORY!!! Your grew a perfect garden!
+      ***
+      "
+    end
+  end
+
+  def help
+    @talk = <<TEXT
+
+Gardening Challenge rules:
+
+- The goal is to plant #{WIN_POINT} plants in the garden.
+- Garden can contain the maximum of #{GARDEN_CAPACITY} plants or weeds.
+- Plants grow when planted (p), weeds grow by themselves each round.
+- Weeds can be removed by weeding (x), to make space for the plants.
+- Soil needs to be watered (w) for plants to stay alive.
+- If soil is completely without water, plants start drying away each round.
+- Gardener (you!) needs enough energy to work, called mana.
+- Each action (planting, weeding, watering) costs mana.
+- Small amount of mana gets replenished each round (through night's sleep).
+- Mana can get a powerful boost through enjoying the garden, or resting (r).
+- Each round player has a choice of 4 moves: p: plant, w: water, x: weed, and r: rest.
+- You may also view rules help (h), or quit the game (q)
+- Each round, game reports state of garden, and resources: Number of plants and weeds, and levels of water in soil and gardener's energy in percents.
+- The game is lost when all plants dry, or the gardener burns out and gives up.
+- The game is also lost if weeds take over the garden (grow #{WIN_POINT} or more)
+- The garden is perfect when it has #{WIN_POINT} plants (a small number of weeds is a fact of life).
+- When the garden is perfect, the game is won!
+- Grow plants, while keeping weeds under control, soil well watered, and the gardener (you) well rested.
+
+Good luck, and may you make wise choices!
+TEXT
   end
 
   private
 
   def meanwhile
+    @talk = '
+    ***
+    Meanwhile:
+    '
     weeds = 1
-    watering = 10
+    watering = -10
     mana = 5
-    @garden.dry(watering)
-    @garden.add_weeds(weeds)
-    @garden.yield_mana(mana)
-    @talk = "#{weeds} new weed grew. Soil dried by #{watering}%. Gained #{mana}% mana."
+    @garden.mana(mana)
+    @garden.water(watering)
+    if @garden.weeds + @garden.plants >= GARDEN_CAPACITY
+      @talk += "#{weeds} new weed tried to grow but found no space.
+    Soil dried by #{watering.abs}%. Gained #{mana}% mana."
+    else
+      @garden.weed(weeds)
+      @talk += "#{weeds} new weed grew.
+    Soil dried by #{watering.abs}%. Gained #{mana}% mana."
+    end
+    @talk += '
+    ***'
   end
 
   def quit
     @garden = nil
-    @talk = 'Goodbye!'
+    @talk = '
+  *** Goodbye!'
   end
 
   def water
     watering = 25
-    mana = 15
-    @garden.consume_mana(mana)
+    mana = -15
+    @garden.mana(mana)
     @garden.water(watering)
-    @talk = "The soil is damp now, good. Watered #{watering}% better. Spent #{mana}% mana."
+    @talk = "
+  *** The soil is damp now, good. Watered #{watering}% better. Spent #{mana.abs}% mana."
   end
 
   def plant
     plants = 1
-    mana = 15
-    @garden.consume_mana(mana)
-    @garden.add_plants(plants)
-    @talk = "#{plants} new plant grew. Spent #{mana}% mana."
+    mana = -15
+    watering = -10
+    @garden.mana(mana)
+    if @garden.weeds + @garden.plants >= GARDEN_CAPACITY
+      @talk = "
+    *** #{plants} new plant tried to grow but found no space. Soil dried by #{watering.abs}%. Spent #{mana.abs}% mana."
+    else
+      @garden.plant(plants)
+      @talk = "
+    *** #{plants} new plant grew. Spent #{mana.abs}% mana."
+    end
   end
 
   def weed
-    weeds = 5
-    mana = 15
-    @garden.consume_mana(mana)
-    @garden.remove_weeds(weeds)
-    @talk = "Got rid of #{weeds} weeds, good. Spent #{mana}% mana."
+    weeds = -5
+    mana = -15
+    @garden.mana(mana)
+    @garden.weed(weeds)
+    @talk = "
+  *** Got rid of #{weeds.abs} weeds, good. Spent #{mana.abs}% mana."
   end
 
   def rest
     mana = 25
-    @garden.yield_mana(mana)
-    @talk = "That was nice. Feeling rested now. Regained #{mana}% mana."
+    @garden.mana(mana)
+    @talk = "
+  *** That was nice. Feeling rested now. Regained #{mana}% mana."
   end
 end
 
 
 class UI
 
-  def initialize(moves)
+  def initialize(moves: nil, answers: nil)
     @moves = moves
+    @answers = answers
   end
 
-  def capture
-    prompt
+  def capture(what)
+    prompt what
     collect
   end
 
   def wonder
-    puts '- Sorry, I didn\'t understand that.'
+    puts '
+    - Sorry, I didn\'t understand that.'
   end
 
-  def transmit(something)
+  def render(something)
     puts something
   end
 
   private
 
-  def prompt
-    puts '- Please make a move: ' + @moves
+  def prompt(what)
+    if what == :move
+      puts '- Make a move: ' + @moves
+    end
+    if what == :restart
+      puts '- Play again? ' + @answers
+    end
   end
 
   def collect
     gets.chomp.to_sym
   end
 
-
-
 end
+
 
 class GardenGame
 
   MOVES = {
-      q: :quit,
-      p: :plant,
-      w: :water,
-      x: :weed,
-      r: :rest
+    p: :plant,
+    w: :water,
+    x: :weed,
+    r: :rest,
+    h: :help,
+    q: :quit
+  }
+
+  ANSWERS = {
+    y: :yes,
+    n: :no
   }
 
   def initialize
     @game = Game.new
-    @ui = UI.new(moves)
+    @ui = UI.new(moves: prettify(MOVES), answers: prettify(ANSWERS))
     @move = nil
   end
 
   def play
+    @ui.render '
+    Welcome Gardener!
+    You can view game rules by calling help (h)
+    May your garden prosper!
+    '
     until @game.over || @move == :quit
-      @game.send :meanwhile
+      if @move
+        @game.send :meanwhile
+        @ui.render @game.talk
+      end
       @game.assess
-      @ui.transmit @game.state
-      round unless @game.over
+      @ui.render @game.state
+      if @game.over
+        restart
+      else
+        round
+      end
     end
+  end
+
+  def help
+    @ui.render @game.rules
   end
 
   private
 
   def round
-    player_move @ui.capture
+    next_move? @ui.capture :move
     if @move
       @game.send @move
-      @ui.transmit @game.talk
+      @ui.render @game.talk
     else
       @ui.wonder
       round
     end
   end
 
-  def player_move(key)
+  def restart
+    case restart? @ui.capture :restart
+      when :yes
+        @game = Game.new
+        @move = nil
+      when :no
+        @move = :quit
+        @game.send @move
+        @ui.render @game.talk
+      else
+        @ui.wonder
+        restart
+    end
+  end
+
+  def next_move?(key)
     @move = MOVES[key]
   end
 
-  def moves
-    MOVES.inspect
+  def restart?(key)
+    ANSWERS[key]
+  end
+
+  def prettify(hash)
+    hash.map { |key, val|
+      key.to_s + ': ' + val.to_s
+    }.join(', ')
   end
 
 end
